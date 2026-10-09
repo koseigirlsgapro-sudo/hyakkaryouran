@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>百花繚乱！打ち上げチャレンジ</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Yuji+Syuku&family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #050510;
+            font-family: 'Zen Maru Gothic', sans-serif;
+        }
+
+        /* Safe area spacing for iOS home indicator */
+        .pb-safe {
+            padding-bottom: max(1rem, env(safe-area-inset-bottom));
+        }
+
+        .font-japanese-calligraphy {
+            font-family: 'Yuji Syuku', serif;
+        }
+
+        /* Glassmorphism background */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        /* Glowing text effects */
+        .glow-red {
+            text-shadow: 0 0 15px rgba(255, 51, 102, 0.8), 0 0 30px rgba(255, 51, 102, 0.5);
+        }
+        .glow-blue {
+            text-shadow: 0 0 15px rgba(0, 210, 255, 0.8), 0 0 30px rgba(0, 210, 255, 0.5);
+        }
+        .glow-gold {
+            text-shadow: 0 0 15px rgba(255, 215, 0, 0.8), 0 0 30px rgba(255, 215, 0, 0.5);
+        }
+        .glow-title {
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.9), 0 0 40px rgba(255, 51, 102, 0.7), 0 0 60px rgba(0, 210, 255, 0.5);
+        }
+
+        /* Gauge bar matching judgment zones:
+           Center 50%.
+           GREAT/PERFECT zone: diff <= 8 -> 42% to 58% (Emerald)
+           NEAR zone: diff <= 16 -> 34% to 66% (Amber)
+           MISS zone: <34% and >66% (Slate/Dark)
+        */
+        .gauge-container {
+            position: relative;
+            background: linear-gradient(90deg, 
+                #1e293b 0%, 
+                #334155 33%, 
+                #f59e0b 34%, 
+                #10b981 42%, 
+                #ec4899 50%, 
+                #10b981 58%, 
+                #f59e0b 66%, 
+                #334155 67%, 
+                #1e293b 100%);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            box-shadow: inset 0 2px 8px rgba(0,0,0,0.6);
+        }
+
+        .gauge-marker {
+            position: absolute;
+            top: -4px;
+            bottom: -4px;
+            width: 8px;
+            background: #ffffff;
+            border-radius: 4px;
+            box-shadow: 0 0 10px #ffffff, 0 0 20px #38bdf8;
+            transform: translateX(-50%);
+            will-change: left;
+        }
+
+        /* Pulse button animation */
+        @keyframes pulse-btn {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(236, 72, 153, 0.6); }
+            50% { transform: scale(1.02); box-shadow: 0 0 30px rgba(236, 72, 153, 0.9); }
+        }
+
+        .btn-launch {
+            animation: pulse-btn 1.5s infinite ease-in-out;
+        }
+
+        /* Particle fireworks title bloom animation */
+        @keyframes title-bloom {
+            0% { opacity: 0; transform: scale(0.6) translateY(15px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .animate-title-bloom {
+            animation: title-bloom 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+    </style>
+</head>
+<body class="w-full h-full text-white select-none overflow-hidden flex flex-col justify-between">
+
+    <!-- WebGL Canvas Container -->
+    <div id="canvas-container" class="absolute inset-0 w-full h-full z-0"></div>
+
+    <!-- MAIN UI OVERLAY -->
+    <div class="relative z-10 w-full h-full flex flex-col justify-between p-3 sm:p-5 pointer-events-none pb-safe">
+        
+        <!-- TOP HUD / HEADER -->
+        <header id="hud-header" class="w-full max-w-md mx-auto flex items-center justify-between glass-panel rounded-2xl px-4 py-2.5 transition-all duration-300 opacity-0 transform -translate-y-4">
+            <div class="flex items-center space-x-2">
+                <span class="text-xs text-slate-300 font-bold tracking-wider">文化祭</span>
+                <span class="text-sm font-black text-amber-300 font-japanese-calligraphy">百花繚乱</span>
+            </div>
+            
+            <!-- Fireworks Counter -->
+            <div class="flex items-center space-x-2.5 bg-slate-900/60 px-3 py-1 rounded-full border border-slate-700">
+                <span id="success-count-text" class="text-xs text-slate-300 font-bold">成功: 0 / 3</span>
+                <div class="flex space-x-1.5">
+                    <div id="dot-red" class="w-3.5 h-3.5 rounded-full border border-slate-600 bg-slate-800 transition-all duration-300"></div>
+                    <div id="dot-blue" class="w-3.5 h-3.5 rounded-full border border-slate-600 bg-slate-800 transition-all duration-300"></div>
+                    <div id="dot-gold" class="w-3.5 h-3.5 rounded-full border border-slate-600 bg-slate-800 transition-all duration-300"></div>
+                </div>
+            </div>
+        </header>
+
+        <!-- CENTER MESSAGES & TITLE SCREENS -->
+        <div class="flex-1 flex flex-col items-center justify-center relative pointer-events-auto my-auto">
+            
+            <!-- START TITLE SCREEN -->
+            <div id="screen-start" class="flex flex-col items-center text-center p-5 sm:p-6 glass-panel rounded-3xl max-w-xs sm:max-w-sm w-full border border-amber-500/30 shadow-2xl">
+                <div class="text-[11px] font-bold text-amber-400 tracking-widest mb-1">〜 文化祭テーマ 〜</div>
+                <h1 class="text-3xl sm:text-5xl font-black font-japanese-calligraphy glow-title text-amber-300 mb-1 leading-tight">
+                    百花繚乱！
+                </h1>
+                <p class="text-base sm:text-lg font-bold text-slate-200 mb-4">打ち上げチャレンジ</p>
+                
+                <p class="text-xs text-slate-300 mb-5 leading-relaxed bg-slate-900/50 p-3 rounded-xl border border-slate-700/50">
+                    タイミングを合わせて「赤・青・金」の3つの花火を打ち上げよう！<br>
+                    <span class="text-amber-300 font-bold">※失敗してもその花火から何度でも再挑戦OK！</span>
+                </p>
+
+                <button id="btn-start" class="w-full py-3.5 bg-gradient-to-r from-amber-500 via-rose-500 to-pink-600 hover:from-amber-400 hover:to-pink-500 text-white font-black text-lg rounded-2xl shadow-lg shadow-pink-500/30 transform active:scale-95 transition-all cursor-pointer">
+                    打ち上げ開始！
+                </button>
+            </div>
+
+            <!-- RETRY / FAIL SCREEN (Replaces Instant Game Over) -->
+            <div id="screen-retry" class="hidden flex flex-col items-center text-center p-5 sm:p-6 glass-panel rounded-3xl max-w-xs sm:max-w-sm w-full border border-rose-500/40 shadow-2xl animate-title-bloom">
+                <div class="text-[11px] font-bold text-rose-400 tracking-widest mb-1">〜 惜しい！打ち上げ失敗 〜</div>
+                <h2 id="retry-title" class="text-3xl sm:text-4xl font-black font-japanese-calligraphy glow-red text-rose-300 mb-2 leading-tight">
+                    もう一度挑戦！
+                </h2>
+                <p id="retry-desc" class="text-xs sm:text-sm font-medium text-slate-300 mb-5 bg-slate-900/60 p-3 rounded-xl border border-slate-700">
+                    タイミングを合わせて緑のゾーンを狙おう。
+                </p>
+
+                <button id="btn-retry" class="w-full py-3.5 bg-gradient-to-r from-rose-500 to-orange-600 hover:from-rose-400 hover:to-orange-500 text-white font-black text-lg rounded-2xl shadow-lg shadow-rose-500/30 transform active:scale-95 transition-all cursor-pointer">
+                    この花火に再挑戦
+                </button>
+            </div>
+
+            <!-- JUDGMENT BANNER -->
+            <div id="judgment-banner" class="hidden absolute top-1/3 transform -translate-y-1/2 pointer-events-none transition-all duration-300 scale-50 opacity-0 z-20">
+                <div id="judgment-text" class="text-3xl sm:text-5xl font-black font-japanese-calligraphy px-6 py-2.5 rounded-2xl glass-panel shadow-2xl border-2">
+                    大成功！
+                </div>
+            </div>
+
+            <!-- FINALE HYAKKA RYORAN SCREEN -->
+            <div id="screen-finale" class="hidden flex flex-col items-center text-center p-4 sm:p-6 pointer-events-auto">
+                <div id="finale-title-box" class="animate-title-bloom mb-4">
+                    <div class="text-amber-300 text-xs sm:text-sm font-bold tracking-widest mb-1">祝・全3発 成功達成！</div>
+                    <h2 class="text-5xl sm:text-8xl font-black font-japanese-calligraphy glow-title text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-pink-400 to-cyan-300 py-1">
+                        百花繚乱！
+                    </h2>
+                    <p class="text-slate-200 text-xs sm:text-base font-bold mt-2">夜空を満開の花火が彩りました！</p>
+                </div>
+                
+                <button id="btn-restart" class="mt-6 px-8 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-black text-lg sm:text-xl rounded-2xl shadow-xl shadow-teal-500/40 transform active:scale-95 transition-all cursor-pointer">
+                    もう一度遊ぶ
+                </button>
+            </div>
+
+        </div>
+
+        <!-- BOTTOM CONTROLS PANEL (GAUGE & LAUNCH BUTTON) -->
+        <footer id="hud-footer" class="w-full max-w-md mx-auto glass-panel rounded-3xl p-3.5 sm:p-4 flex flex-col space-y-2.5 transition-all duration-300 opacity-0 transform translate-y-4 pointer-events-auto">
+            
+            <!-- Target Firework Indicator -->
+            <div class="flex items-center justify-between text-xs font-bold px-1">
+                <span class="text-slate-400">現在の花火:</span>
+                <span id="current-firework-name" class="text-rose-400 font-extrabold text-sm sm:text-base glow-red">
+                    1発目：赤色の花火
+                </span>
+            </div>
+
+            <!-- Timing Gauge Area -->
+            <div class="relative w-full">
+                <!-- Target Zone Label -->
+                <div class="flex justify-between text-[10px] sm:text-xs text-slate-400 mb-1 px-1">
+                    <span>失敗</span>
+                    <span class="text-amber-400">惜しい</span>
+                    <span class="text-emerald-400 font-bold">成功</span>
+                    <span class="text-amber-400">惜しい</span>
+                    <span>失敗</span>
+                </div>
+                
+                <!-- The Gauge Bar -->
+                <div class="gauge-container w-full h-7 sm:h-8 rounded-full overflow-hidden">
+                    <!-- Moving Marker -->
+                    <div id="gauge-marker" class="gauge-marker"></div>
+                </div>
+            </div>
+
+            <!-- Launch Button -->
+            <button id="btn-launch" class="btn-launch w-full py-3 sm:py-3.5 bg-gradient-to-r from-rose-500 via-purple-600 to-indigo-600 active:from-rose-600 active:to-indigo-700 text-white font-black text-xl sm:text-2xl tracking-widest rounded-2xl shadow-xl transform active:scale-95 transition-transform flex items-center justify-center space-x-2 cursor-pointer">
+                <span>打ち上げ！</span>
+            </button>
+            
+            <div class="text-[10px] text-slate-400 text-center">
+                ※ボタンタップ または スペースキーで発射
+            </div>
+        </footer>
+
+    </div>
+
+    <script>
+        /**
+         * Sound Effects Manager using Web Audio API
+         */
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playLaunch() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(300, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1100, this.ctx.currentTime + 0.5);
+                
+                gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.5);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.5);
+            }
+
+            playExplosion(isGreat = false) {
+                if (!this.ctx) return;
+                
+                const bufferSize = Math.floor(this.ctx.sampleRate * (isGreat ? 1.0 : 0.6));
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const output = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = Math.random() * 2 - 1;
+                }
+
+                const whiteNoise = this.ctx.createBufferSource();
+                whiteNoise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(700, this.ctx.currentTime);
+                filter.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + (isGreat ? 0.9 : 0.5));
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(isGreat ? 0.35 : 0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + (isGreat ? 1.0 : 0.6));
+
+                whiteNoise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                whiteNoise.start();
+                whiteNoise.stop(this.ctx.currentTime + (isGreat ? 1.0 : 0.6));
+            }
+
+            playFail() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(220, this.ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(90, this.ctx.currentTime + 0.35);
+
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.35);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.35);
+            }
+
+            playFinaleFanfare() {
+                if (!this.ctx) return;
+                const notes = [523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((freq, index) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.value = freq;
+
+                    const startTime = this.ctx.currentTime + (index * 0.1);
+                    gain.gain.setValueAtTime(0, startTime);
+                    gain.gain.linearRampToValueAtTime(0.18, startTime + 0.04);
+                    gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.7);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(startTime);
+                    osc.stop(startTime + 0.7);
+                });
+            }
+        }
+
+        const soundFX = new SoundFX();
+    </script>
+
+    <script>
+        /**
+         * Three.js 3D World Manager
+         */
+        let container = document.getElementById('canvas-container');
+        let scene, camera, renderer;
+        let launchPadGroup;
+        let activeFireworks = [];
+        let activeParticles = [];
+
+        const FIREWORK_COLORS = {
+            red: { hex: 0xff2a5f, cssClass: 'text-rose-400 glow-red', name: '1発目：赤色の花火' },
+            blue: { hex: 0x00d2ff, cssClass: 'text-cyan-400 glow-blue', name: '2発目：青色の花火' },
+            gold: { hex: 0xffd700, cssClass: 'text-amber-300 glow-gold', name: '3発目：黄金の花火' }
+        };
+
+        function init3D() {
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x050510, 0.012);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
+            updateCameraPosition();
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            // Limit pixel ratio to 1.5 to reduce GPU load on mobile/Retina devices
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            container.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0x334466, 0.9);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+            dirLight.position.set(5, 20, 10);
+            scene.add(dirLight);
+
+            createGround();
+            createLaunchPad();
+            createBackgroundStars();
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function updateCameraPosition() {
+            const aspect = window.innerWidth / window.innerHeight;
+            if (aspect < 0.8) {
+                camera.position.set(0, 4.5, 16);
+                camera.lookAt(0, 11, -3);
+            } else {
+                camera.position.set(0, 4.0, 13);
+                camera.lookAt(0, 10, -2);
+            }
+        }
+
+        function createGround() {
+            const groundGeo = new THREE.PlaneGeometry(150, 150);
+            const groundMat = new THREE.MeshStandardMaterial({ 
+                color: 0x0a0f1d, 
+                roughness: 0.9,
+                metalness: 0.1
+            });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = 0;
+            scene.add(ground);
+        }
+
+        function createLaunchPad() {
+            launchPadGroup = new THREE.Group();
+
+            const baseGeo = new THREE.BoxGeometry(3.5, 0.4, 1.8);
+            const baseMat = new THREE.MeshStandardMaterial({ color: 0x3f2e21, roughness: 0.8 });
+            const base = new THREE.Mesh(baseGeo, baseMat);
+            base.position.y = 0.2;
+            launchPadGroup.add(base);
+
+            const tubePositions = [-1.0, 0, 1.0];
+            const tubeRotationsZ = [0.22, 0, -0.22];
+
+            tubePositions.forEach((xPos, idx) => {
+                const tubeGeo = new THREE.CylinderGeometry(0.2, 0.22, 1.3, 12);
+                const tubeMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.6, roughness: 0.3 });
+                const tube = new THREE.Mesh(tubeGeo, tubeMat);
+                tube.position.set(xPos, 0.8, 0);
+                tube.rotation.x = -0.25;
+                tube.rotation.z = tubeRotationsZ[idx];
+                launchPadGroup.add(tube);
+
+                const ringGeo = new THREE.TorusGeometry(0.21, 0.03, 8, 12);
+                const ringMat = new THREE.MeshBasicMaterial({ 
+                    color: idx === 0 ? 0xff3366 : (idx === 1 ? 0x00d2ff : 0xffd700) 
+                });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.rotation.x = Math.PI / 2;
+                ring.position.set(xPos, 1.3, 0);
+                launchPadGroup.add(ring);
+            });
+
+            launchPadGroup.position.set(0, 0, 0);
+            scene.add(launchPadGroup);
+        }
+
+        function createBackgroundStars() {
+            const count = 350; // Optimized count
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(count * 3);
+
+            for (let i = 0; i < count * 3; i += 3) {
+                positions[i] = (Math.random() - 0.5) * 120;
+                positions[i + 1] = Math.random() * 70 + 5;
+                positions[i + 2] = (Math.random() - 0.5) * 120 - 20;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            const material = new THREE.PointsMaterial({
+                size: 0.5,
+                color: 0xddddff,
+                transparent: true,
+                opacity: 0.7
+            });
+
+            const stars = new THREE.Points(geometry, material);
+            scene.add(stars);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            updateCameraPosition();
+        }
+    </script>
+
+    <script>
+        /**
+         * Firework Launch Rocket with Arc Trajectory & Memory Cleanup
+         */
+        class FireworkRocket {
+            constructor(colorHex, startPos, targetPos, isDummy = false) {
+                this.colorHex = colorHex;
+                this.startPos = startPos;
+                this.targetPos = targetPos;
+                this.isDummy = isDummy;
+                this.isDead = false;
+                
+                this.progress = 0;
+                this.speed = 0.024 + Math.random() * 0.003;
+                this.arcHeight = 4.0 + Math.random() * 1.0;
+
+                this.geo = new THREE.SphereGeometry(0.18, 8, 8);
+                this.mat = new THREE.MeshBasicMaterial({ color: colorHex });
+                this.mesh = new THREE.Mesh(this.geo, this.mat);
+                this.mesh.position.set(startPos.x, startPos.y, startPos.z);
+                scene.add(this.mesh);
+
+                this.light = new THREE.PointLight(colorHex, 2.0, 8);
+                this.mesh.add(this.light);
+
+                soundFX.playLaunch();
+            }
+
+            update() {
+                if (this.isDead) return;
+
+                this.progress += this.speed;
+
+                if (this.progress >= 1.0) {
+                    this.progress = 1.0;
+                    this.explode();
+                    return;
+                }
+
+                const t = this.progress;
+                const currentX = this.startPos.x + (this.targetPos.x - this.startPos.x) * t;
+                const currentZ = this.startPos.z + (this.targetPos.z - this.startPos.z) * t;
+                const linearY = this.startPos.y + (this.targetPos.y - this.startPos.y) * t;
+                const arcY = 4 * this.arcHeight * t * (1 - t);
+                const currentY = linearY + arcY;
+
+                this.mesh.position.set(currentX, currentY, currentZ);
+
+                if (Math.random() > 0.3) {
+                    createSparkle(
+                        currentX + (Math.random() - 0.5) * 0.1,
+                        currentY - 0.15,
+                        currentZ + (Math.random() - 0.5) * 0.1,
+                        0xffffff,
+                        0.3
+                    );
+                }
+            }
+
+            explode() {
+                this.isDead = true;
+                
+                // Proper Memory Disposal
+                this.mesh.remove(this.light);
+                if (this.light.dispose) this.light.dispose();
+                scene.remove(this.mesh);
+                this.geo.dispose();
+                this.mat.dispose();
+
+                if (!this.isDummy) {
+                    createBurstExplosion(this.mesh.position.x, this.mesh.position.y, this.mesh.position.z, this.colorHex, 80);
+                    soundFX.playExplosion(true);
+                } else {
+                    createBurstExplosion(this.mesh.position.x, this.mesh.position.y, this.mesh.position.z, 0x888888, 20);
+                    soundFX.playExplosion(false);
+                }
+            }
+        }
+
+        // Particle burst explosion with memory disposal
+        function createBurstExplosion(x, y, z, colorHex, count = 70) {
+            const pGeo = new THREE.BufferGeometry();
+            const positions = new Float32Array(count * 3);
+            const velocities = [];
+
+            for (let i = 0; i < count; i++) {
+                positions[i * 3] = x;
+                positions[i * 3 + 1] = y;
+                positions[i * 3 + 2] = z;
+
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(Math.random() * 2 - 1);
+                const speed = 0.12 + Math.random() * 0.18;
+
+                velocities.push({
+                    x: Math.sin(phi) * Math.cos(theta) * speed,
+                    y: Math.sin(phi) * Math.sin(theta) * speed,
+                    z: Math.cos(phi) * speed
+                });
+            }
+
+            pGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            const pMat = new THREE.PointsMaterial({
+                color: colorHex,
+                size: 0.42,
+                transparent: true,
+                opacity: 1.0,
+                blending: THREE.AdditiveBlending
+            });
+
+            const pSystem = new THREE.Points(pGeo, pMat);
+            scene.add(pSystem);
+
+            activeParticles.push({
+                system: pSystem,
+                velocities: velocities,
+                life: 1.0,
+                decay: 0.018 + Math.random() * 0.008
+            });
+        }
+
+        function createSparkle(x, y, z, colorHex, lifeScale = 1) {
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.Float32BufferAttribute([x, y, z], 3));
+            const mat = new THREE.PointsMaterial({
+                color: colorHex,
+                size: 0.2,
+                transparent: true,
+                opacity: 0.8
+            });
+            const p = new THREE.Points(geo, mat);
+            scene.add(p);
+
+            activeParticles.push({
+                system: p,
+                velocities: [{ x: 0, y: -0.02, z: 0 }],
+                life: lifeScale,
+                decay: 0.06
+            });
+        }
+
+        function updateParticles() {
+            for (let i = activeParticles.length - 1; i >= 0; i--) {
+                const p = activeParticles[i];
+                p.life -= p.decay;
+
+                if (p.life <= 0) {
+                    scene.remove(p.system);
+                    p.system.geometry.dispose();
+                    p.system.material.dispose();
+                    activeParticles.splice(i, 1);
+                    continue;
+                }
+
+                p.system.material.opacity = p.life;
+
+                const posAttr = p.system.geometry.attributes.position;
+                const positions = posAttr.array;
+
+                for (let j = 0; j < p.velocities.length; j++) {
+                    positions[j * 3] += p.velocities[j].x;
+                    positions[j * 3 + 1] += p.velocities[j].y;
+                    positions[j * 3 + 2] += p.velocities[j].z;
+
+                    p.velocities[j].y -= 0.003; // Gravity
+                }
+                posAttr.needsUpdate = true;
+            }
+        }
+    </script>
+
+    <script>
+        /**
+         * Game Logic & State Management
+         */
+        const GAME_STATE = {
+            START: 'START',
+            READY: 'READY',
+            LAUNCHING: 'LAUNCHING',
+            RETRY: 'RETRY',
+            FINALE: 'FINALE'
+        };
+
+        let currentState = GAME_STATE.START;
+        let currentFireworkIndex = 0; // 0: Red, 1: Blue, 2: Gold
+        const fireworkOrder = ['red', 'blue', 'gold'];
+        const successStatus = [false, false, false];
+
+        // Delta-Time Gauge variables (Units: % per second)
+        let gaugePos = 0;
+        let gaugeDirection = 1;
+        let baseGaugeSpeed = 75; // 75% width traversed per second
+        let lastTimestamp = performance.now();
+        let isProcessingInput = false;
+
+        // UI Element References
+        const screenStart = document.getElementById('screen-start');
+        const screenRetry = document.getElementById('screen-retry');
+        const screenFinale = document.getElementById('screen-finale');
+        const hudHeader = document.getElementById('hud-header');
+        const hudFooter = document.getElementById('hud-footer');
+        const btnStart = document.getElementById('btn-start');
+        const btnRetry = document.getElementById('btn-retry');
+        const btnLaunch = document.getElementById('btn-launch');
+        const btnRestart = document.getElementById('btn-restart');
+        const gaugeMarker = document.getElementById('gauge-marker');
+        const judgmentBanner = document.getElementById('judgment-banner');
+        const judgmentText = document.getElementById('judgment-text');
+        const currentFireworkName = document.getElementById('current-firework-name');
+        const successCountText = document.getElementById('success-count-text');
+        const retryTitle = document.getElementById('retry-title');
+        const retryDesc = document.getElementById('retry-desc');
+
+        const dots = {
+            red: document.getElementById('dot-red'),
+            blue: document.getElementById('dot-blue'),
+            gold: document.getElementById('dot-gold')
+        };
+
+        function initEvents() {
+            btnStart.addEventListener('click', startGame);
+            btnRetry.addEventListener('click', retryCurrentFirework);
+            btnRestart.addEventListener('click', restartWholeGame);
+
+            btnLaunch.addEventListener('click', (e) => {
+                e.preventDefault();
+                handleLaunchInput();
+            });
+            
+            window.addEventListener('keydown', (e) => {
+                if (e.code === 'Space') {
+                    e.preventDefault();
+                    if (currentState === GAME_STATE.START) {
+                        startGame();
+                    } else if (currentState === GAME_STATE.READY) {
+                        handleLaunchInput();
+                    } else if (currentState === GAME_STATE.RETRY) {
+                        retryCurrentFirework();
+                    } else if (currentState === GAME_STATE.FINALE && !screenFinale.classList.contains('hidden')) {
+                        restartWholeGame();
+                    }
+                }
+            });
+        }
+
+        function startGame() {
+            soundFX.init();
+            currentState = GAME_STATE.READY;
+
+            screenStart.classList.add('hidden');
+            screenRetry.classList.add('hidden');
+            hudHeader.classList.remove('opacity-0', '-translate-y-4');
+            hudFooter.classList.remove('opacity-0', 'translate-y-4');
+
+            resetGameData();
+            updateHUD();
+            lastTimestamp = performance.now();
+        }
+
+        function resetGameData() {
+            currentFireworkIndex = 0;
+            successStatus[0] = false;
+            successStatus[1] = false;
+            successStatus[2] = false;
+            updateCounterDots();
+        }
+
+        function updateCounterDots() {
+            const count = successStatus.filter(Boolean).length;
+            successCountText.textContent = `成功: ${count} / 3`;
+
+            const colors = ['red', 'blue', 'gold'];
+            const hexes = ['bg-rose-500 border-rose-300 shadow-rose-500/50', 'bg-cyan-400 border-cyan-200 shadow-cyan-400/50', 'bg-amber-400 border-amber-200 shadow-amber-400/50'];
+            
+            colors.forEach((col, idx) => {
+                if (successStatus[idx]) {
+                    dots[col].className = `w-3.5 h-3.5 rounded-full border shadow-md transition-all duration-300 ${hexes[idx]}`;
+                } else {
+                    dots[col].className = `w-3.5 h-3.5 rounded-full border border-slate-600 bg-slate-800 transition-all duration-300`;
+                }
+            });
+        }
+
+        function updateHUD() {
+            const key = fireworkOrder[currentFireworkIndex];
+            const data = FIREWORK_COLORS[key];
+            
+            currentFireworkName.textContent = data.name;
+            currentFireworkName.className = `font-extrabold text-sm sm:text-base ${data.cssClass}`;
+        }
+
+        // Delta-Time gauge update inside main loop
+        function updateGauge(deltaTime) {
+            if (currentState !== GAME_STATE.READY) return;
+
+            // Speed scales slightly with current level: 75% -> 90% -> 105% per second
+            const currentSpeed = baseGaugeSpeed + currentFireworkIndex * 15;
+            gaugePos += currentSpeed * gaugeDirection * deltaTime;
+
+            if (gaugePos >= 100) {
+                gaugePos = 100;
+                gaugeDirection = -1;
+            } else if (gaugePos <= 0) {
+                gaugePos = 0;
+                gaugeDirection = 1;
+            }
+
+            gaugeMarker.style.left = `${gaugePos}%`;
+        }
+
+        function handleLaunchInput() {
+            if (currentState !== GAME_STATE.READY || isProcessingInput) return;
+            isProcessingInput = true;
+
+            currentState = GAME_STATE.LAUNCHING;
+            const currentKey = fireworkOrder[currentFireworkIndex];
+            const colorData = FIREWORK_COLORS[currentKey];
+
+            // Evaluate timing relative to center 50%
+            const diff = Math.abs(gaugePos - 50);
+            let result = 'MISS';
+
+            // Alignment with UI Gauge:
+            // Emerald target zone: diff <= 8 (42% to 58%)
+            // Amber near zone: diff <= 16 (34% to 66%)
+            if (diff <= 3) {
+                result = 'PERFECT';
+            } else if (diff <= 8) {
+                result = 'GREAT';
+            } else if (diff <= 16) {
+                result = 'NEAR';
+            } else {
+                result = 'MISS';
+            }
+
+            const startPositions = [
+                { x: -1.0, y: 0.8, z: 0 },
+                { x: 0, y: 0.8, z: 0 },
+                { x: 1.0, y: 0.8, z: 0 }
+            ];
+            
+            const targetPositions = [
+                { x: -2.5, y: 11, z: -3 },
+                { x: 0, y: 12, z: -4 },
+                { x: 2.5, y: 11, z: -3 }
+            ];
+
+            const startP = startPositions[currentFireworkIndex];
+            const targetP = targetPositions[currentFireworkIndex];
+
+            if (result === 'PERFECT' || result === 'GREAT') {
+                showJudgment(result === 'PERFECT' ? '大成功！' : '成功！', 'text-emerald-300 border-emerald-400');
+                
+                const rocket = new FireworkRocket(colorData.hex, startP, targetP, false);
+                activeFireworks.push(rocket);
+
+                // Mark current firework as succeeded
+                successStatus[currentFireworkIndex] = true;
+                updateCounterDots();
+
+                setTimeout(() => {
+                    isProcessingInput = false;
+                    if (successStatus.every(s => s === true)) {
+                        triggerGrandFinale();
+                    } else {
+                        // Move to next firework
+                        currentFireworkIndex++;
+                        updateHUD();
+                        currentState = GAME_STATE.READY;
+                    }
+                }, 1600);
+
+            } else {
+                // FAIL / RETRY BRANCH (Keep previously completed fireworks!)
+                const isNear = (result === 'NEAR');
+                showJudgment(isNear ? '惜しい！' : '失敗...', 'text-amber-400 border-amber-500');
+                soundFX.playFail();
+
+                const dudTarget = { x: startP.x * 0.6, y: 5.5, z: -1 };
+                const rocket = new FireworkRocket(0x777777, startP, dudTarget, true);
+                activeFireworks.push(rocket);
+
+                setTimeout(() => {
+                    isProcessingInput = false;
+                    triggerRetryScreen(isNear);
+                }, 1300);
+            }
+        }
+
+        function triggerRetryScreen(isNear) {
+            currentState = GAME_STATE.RETRY;
+            hudFooter.classList.add('opacity-0', 'translate-y-4');
+
+            const currentKey = fireworkOrder[currentFireworkIndex];
+            const colorName = currentKey === 'red' ? '1発目（赤）' : (currentKey === 'blue' ? '2発目（青）' : '3発目（金）');
+
+            retryTitle.textContent = isNear ? '惜しい！もう一歩！' : '打ち上げ失敗';
+            retryDesc.textContent = `${colorName}の再挑戦です。緑色の「成功」ゾーンを狙おう！`;
+
+            screenRetry.classList.remove('hidden');
+        }
+
+        function retryCurrentFirework() {
+            screenRetry.classList.add('hidden');
+            hudFooter.classList.remove('opacity-0', 'translate-y-4');
+            
+            // Resume current firework without resetting progress
+            updateHUD();
+            currentState = GAME_STATE.READY;
+        }
+
+        function showJudgment(text, colorClasses) {
+            judgmentText.textContent = text;
+            judgmentText.className = `text-3xl sm:text-5xl font-black font-japanese-calligraphy px-6 py-2.5 rounded-2xl glass-panel shadow-2xl border-2 ${colorClasses}`;
+
+            judgmentBanner.classList.remove('hidden');
+            requestAnimationFrame(() => {
+                judgmentBanner.classList.remove('scale-50', 'opacity-0');
+                judgmentBanner.classList.add('scale-100', 'opacity-100');
+            });
+
+            setTimeout(() => {
+                judgmentBanner.classList.remove('scale-100', 'opacity-100');
+                judgmentBanner.classList.add('scale-50', 'opacity-0');
+                setTimeout(() => {
+                    judgmentBanner.classList.add('hidden');
+                }, 300);
+            }, 900);
+        }
+
+        function triggerGrandFinale() {
+            currentState = GAME_STATE.FINALE;
+            hudFooter.classList.add('opacity-0', 'translate-y-4');
+
+            soundFX.playFinaleFanfare();
+
+            const startP = [
+                { x: -1.0, y: 0.8, z: 0 },
+                { x: 0, y: 0.8, z: 0 },
+                { x: 1.0, y: 0.8, z: 0 }
+            ];
+            const targetP = [
+                { x: -3.0, y: 12.0, z: -4 },
+                { x: 0, y: 13.0, z: -5 },
+                { x: 3.0, y: 12.0, z: -4 }
+            ];
+            const colors = [FIREWORK_COLORS.red.hex, FIREWORK_COLORS.gold.hex, FIREWORK_COLORS.blue.hex];
+
+            colors.forEach((col, idx) => {
+                setTimeout(() => {
+                    const r = new FireworkRocket(col, startP[idx], targetP[idx], false);
+                    activeFireworks.push(r);
+                }, idx * 220);
+            });
+
+            // Moderate extra bursts for finale to avoid frame drops
+            let burstCount = 0;
+            const finaleInterval = setInterval(() => {
+                if (burstCount >= 4) {
+                    clearInterval(finaleInterval);
+                    return;
+                }
+                const randomX = (Math.random() - 0.5) * 7;
+                const randomY = 9.5 + Math.random() * 4;
+                const randomZ = -2 - Math.random() * 3;
+                const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                createBurstExplosion(randomX, randomY, randomZ, randomColor, 60);
+                soundFX.playExplosion(false);
+                burstCount++;
+            }, 450);
+
+            setTimeout(() => {
+                screenFinale.classList.remove('hidden');
+            }, 1200);
+        }
+
+        function restartWholeGame() {
+            screenFinale.classList.add('hidden');
+            screenRetry.classList.add('hidden');
+            hudFooter.classList.remove('opacity-0', 'translate-y-4');
+            resetGameData();
+            updateHUD();
+            currentState = GAME_STATE.READY;
+        }
+    </script>
+
+    <script>
+        /**
+         * Main Render Loop with Delta Time
+         */
+        function animate(now) {
+            requestAnimationFrame(animate);
+
+            // Calculate Delta Time in seconds (capped at 0.1s to prevent huge jumps)
+            const deltaTime = Math.min((now - lastTimestamp) / 1000, 0.1);
+            lastTimestamp = now;
+
+            // Update Gauge based on Delta Time
+            updateGauge(deltaTime);
+
+            // Update Fireworks Rockets
+            for (let i = activeFireworks.length - 1; i >= 0; i--) {
+                activeFireworks[i].update();
+                if (activeFireworks[i].isDead) {
+                    activeFireworks.splice(i, 1);
+                }
+            }
+
+            // Update Particles
+            updateParticles();
+
+            // Camera subtle floating animation
+            if (scene) {
+                const time = now * 0.0006;
+                camera.position.x = Math.sin(time) * 0.2;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function() {
+            init3D();
+            initEvents();
+            lastTimestamp = performance.now();
+            requestAnimationFrame(animate);
+        };
+    </script>
+</body>
+</html>
